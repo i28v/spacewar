@@ -1,4 +1,5 @@
-org 100h
+org 100h    
+include emu8086.inc
 jmp start
 
 start:
@@ -7,7 +8,8 @@ jmp maingameloop
 
 maingameloop:
 call printplayer
-call printbullet
+call printbullet 
+call printenemies
 call hidecursor  
 call delay
 call clearmovingobjects
@@ -36,7 +38,8 @@ mov ah, 4Ch
 mov al, 00h
 int 21h
 
-init proc near 
+init proc near      
+call srandsystime
 call clearscreen 
 call printmap
 mov al, 14
@@ -48,15 +51,14 @@ mov ah, 12
 mov byte ptr[bulletx], al
 mov byte ptr[bullety], ah
 mov cx, 6
-mov dx, 0
+mov bl, 2
 mov di, 0   
-mov al, 4
-mov ah, 30
+mov al, 7
+mov ah, 0
 initenemies:
 mov byte ptr[enemiesx[di]], al
 mov byte ptr[enemiesy[di]], ah
-add al, dl
-inc dl
+add al, bl
 inc di
 loop initenemies 
 ret     
@@ -93,6 +95,23 @@ endprintbullet:
 ret    
 printbullet endp
 
+printenemies proc near
+mov cx, 6
+mov di, 0
+PELP1:
+mov dl, enemiesx[di]
+mov dh, enemiesy[di]
+mov bh, 0
+mov ah, 02h
+int 10h
+mov dx, enemy
+mov ah, 09h
+int 21h
+inc di
+loop PELP1
+ret
+printenemies endp
+
 clearmovingobjects proc near
 mov dl, playerx
 mov dh, playery
@@ -110,6 +129,19 @@ int 10h
 mov dx, emptyspace
 mov ah, 09h
 int 21h
+mov cx, 6
+mov di, 0 
+CELP1:   
+mov dl, enemiesx[di]
+mov dh, enemiesy[di]
+mov bh, 0
+mov ah, 02h
+int 10h
+mov dx, emptyspace 
+mov ah, 09h
+int 21h          
+inc di
+loop CELP1
 ret    
 clearmovingobjects endp     
 
@@ -253,7 +285,38 @@ mov al, false
 mov byte ptr[isbulletfiring], al
 jmp endbulletupdate
 endbulletupdate:
-jmp endupdate 
+jmp updateenemies
+updateenemies:         
+mov cx, 6
+mov di, 0
+UECPLP1:   
+jmp CEP
+newepos:          
+call rand
+call rand2num1to20
+add al, 4
+mov byte ptr[enemiesx[di]], al  
+call rand
+call rand2num1to6 
+sub al, 10
+mov byte ptr[enemiesy[di]], al
+jmp EUECPLP1
+CEP:
+mov al, enemiesy[di]
+cmp al, 11
+jle UELP1
+cmp al, 12
+jge newepos        
+UELP1:                                              
+mov al, enemiesy[di]
+inc al
+mov byte ptr[enemiesy[di]], al 
+EUECPLP1:
+inc di
+loop UECPLP1
+jmp endenemiesupdate
+endenemiesupdate:
+jmp endupdate
 endupdate:
 ret
 updategame endp   
@@ -287,7 +350,54 @@ mov ah,0ch
 mov al,0
 int 21h
 ret
-flushkeyboardbuffer	endp
+flushkeyboardbuffer	endp 
+
+srandsystime proc near
+push cx
+push dx
+xor ax, ax           
+int 1ah
+mov [seed], dx     
+pop dx
+pop cx
+ret           
+srandsystime endp  
+
+rand proc
+push dx
+mov ax, 25173       
+mul word ptr [seed] 
+add ax, 13849       
+mov [seed], ax      
+pop dx
+ret    
+rand endp
+
+rand2num1to20 proc
+push dx
+push bx
+xor dx,dx          
+mov bx,20         
+div bx
+inc dx              
+mov ax,dx
+pop bx
+pop dx
+ret   
+rand2num1to20 endp  
+
+rand2num1to6 proc
+push dx
+push bx
+xor dx,dx          
+mov bx,6         
+div bx
+inc dx              
+mov ax,dx
+pop bx
+pop dx
+ret   
+rand2num1to6 endp
 
 
 true           equ 1
@@ -312,13 +422,15 @@ playerhealth   db 100
 playerscore    db 0
 gameover       db 0
 input          db 0ACh
-bullet:  db '|', 24h
+bullet:        db '|', 24h
 isbulletfiring db 0Ach 
 bulletx        db 0ACh
-bullety        db 0ACh
+bullety        db 0ACh     
+enemy:         db "V", 24h
 enemiesx       db 0ACh, 0ACh, 0ACh, 0ACh, 0ACh, 0ACh
 enemiesy       db 0ACh, 0ACh, 0ACh, 0ACh, 0ACh, 0ACh
 emptyspace:    db 20h, 24h 
+seed           dw 13 
 
 map: db 0C7h,"                         ",0C7h, 0ah, 0dh
      db 0C7h,"                         ",0C7h, 0ah, 0dh
@@ -331,6 +443,6 @@ map: db 0C7h,"                         ",0C7h, 0ah, 0dh
      db 0C7h,"                         ",0C7h, 0ah, 0dh
      db 0C7h,"                         ",0C7h, 0ah, 0dh
      db 0C7h,"                         ",0C7h, 0ah, 0dh   
-     db 0C7h,"                         ",0C7h, 0ah, 0dh
+     db 0C7h,"                         ",0C7h, 0ah, 0dh           
      db 24h 
 
