@@ -267,10 +267,10 @@ ret
 delay endp
 
 clearscreen proc near
-        mov ah,0
-        mov al,3
-        int 10h        
-        ret
+mov ah,0
+mov al,3
+int 10h        
+ret
 clearscreen endp  
 
 hidecursor proc near
