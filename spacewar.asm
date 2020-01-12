@@ -1,5 +1,4 @@
 org 100h    
-include emu8086.inc
 jmp start
 
 start:
@@ -9,15 +8,16 @@ jmp maingameloop
 maingameloop:
 call printplayer
 call printbullet 
-call printenemies
+call printenemies 
+call printscore
 call hidecursor  
 call delay
 call clearmovingobjects
 call checkinput    
 call updategame
 mov al, gameover
-cmp al, 1
-je exit    
+cmp al, true
+je endgame    
 jmp maingameloop    
 
 exit: 
@@ -36,7 +36,20 @@ xor si, si
 mov bp, sp
 mov ah, 4Ch
 mov al, 00h
+int 21h    
+
+endgame:
+call clearscreen
+mov dl, 0
+mov dh, 0
+mov bh, 0
+mov ah, 02h
+int 10h
+mov dx, gameovermsg
+mov ah, 09h
 int 21h
+call gameoverdelay
+jmp exit
 
 init proc near      
 call srandsystime
@@ -69,7 +82,9 @@ mov dl, playerx
 mov dh, playery   
 mov bh, 0     
 mov ah, 02h   
-int 10h 
+int 10h        
+mov dl, 9
+call changetextcolor 
 mov dx, player
 mov ah, 09h
 int 21h
@@ -86,14 +101,30 @@ mov dl, bulletx
 mov dh, bullety
 mov bh, 0
 mov ah, 02h
-int 10h
+int 10h      
+mov dl, 10
+call changetextcolor
 mov dx, bullet
 mov ah, 09h
 int 21h
 jmp endprintbullet
 endprintbullet:
 ret    
-printbullet endp
+printbullet endp  
+
+printscore proc near
+mov dl, 3
+mov dh, 15
+mov bh, 0
+mov ah, 02h
+int 10h
+mov dx, scoremsg
+mov ah, 09h
+int 21h
+mov ax, score
+call printax
+ret     
+printscore endp
 
 printenemies proc near
 mov cx, 6
@@ -103,7 +134,9 @@ mov dl, enemiesx[di]
 mov dh, enemiesy[di]
 mov bh, 0
 mov ah, 02h
-int 10h
+int 10h  
+mov dl, 12
+call changetextcolor
 mov dx, enemy
 mov ah, 09h
 int 21h
@@ -142,6 +175,14 @@ mov ah, 09h
 int 21h          
 inc di
 loop CELP1
+mov dl, 11
+mov dh, 15
+mov bh, 0
+mov ah, 02h
+int 10h
+mov dx, emptyscore
+mov ah, 09h
+int 21h 
 ret    
 clearmovingobjects endp     
 
@@ -149,8 +190,8 @@ printmap proc near
 mov dl, 0
 mov dh, 0
 mov bh, 0
-mov ah, 02h
-int 10h
+mov ah, 02h                                            
+int 10h  
 mov dx, map
 mov ah, 09h
 int 21h
@@ -291,7 +332,9 @@ mov cx, 6
 mov di, 0
 UECPLP1:   
 jmp CEP
-newepos:          
+newepos: 
+mov ax, 1
+add word ptr[score], ax         
 call rand
 call rand2num1to20
 add al, 4
@@ -300,12 +343,18 @@ call rand
 call rand2num1to6 
 sub al, 10
 mov byte ptr[enemiesy[di]], al
-jmp EUECPLP1
+mov al, updatestate
+cmp al, enemystatemoving
+je EUECPLP1           
+cmp al, enemystatebhit
+je ECECB
 CEP:
+mov al, enemystatemoving
+mov byte ptr[updatestate], al
 mov al, enemiesy[di]
 cmp al, 11
-jle UELP1
-cmp al, 12
+jle UELP1 
+cmp al, 12   
 jge newepos        
 UELP1:                                              
 mov al, enemiesy[di]
@@ -316,7 +365,67 @@ inc di
 loop UECPLP1
 jmp endenemiesupdate
 endenemiesupdate:
+jmp checkplayercollidingenemy
+checkplayercollidingenemy:
+mov cx, 6
+mov di, 0
+CPCELP1:
+mov al, enemiesx[di]
+cmp al, playerx
+je phase2
+jmp ECPCELP1
+phase2:
+mov ah, enemiesy[di]
+cmp ah, playery
+je setgameover
+jmp ECPCELP1  
+ECPCELP1:     
+inc di
+loop CPCELP1
+jmp endcheckplayercollidingenemy
+setgameover:
+mov al, true
+mov byte ptr[gameover], al
 jmp endupdate
+endcheckplayercollidingenemy:
+jmp checkenemycollidingbullet
+checkenemycollidingbullet:
+mov cx, 6
+mov di, 0
+CECB:
+mov al, enemiesy[di]
+cmp al, bullety
+je bphase2   
+dec al    
+mov bl, bullety
+inc bl
+cmp al, bl
+je bphase2
+jmp ECECB 
+enemyhit: 
+mov al, isbulletfiring
+cmp al, 0
+jnz finalizeenemyhit
+jmp ECECB
+finalizeenemyhit:
+mov ax, 5
+add word ptr[score], ax 
+mov al, false
+mov byte ptr[isbulletfiring], al
+jmp newepos 
+jmp ECECB
+bphase2:                     
+mov al, updatestate
+mov byte ptr[updatestate], al
+mov al, enemiesx[di]   
+cmp al, bulletx            
+je enemyhit                  
+mov al, enemystatenone
+mov byte ptr[updatestate], al
+jmp ECECB
+ECECB:
+inc di
+loop CECB
 endupdate:
 ret
 updategame endp   
@@ -329,6 +438,14 @@ int 15h
 ret
 delay endp
 
+gameoverdelay proc near
+mov cx, 32h
+mov dx, 4240h
+mov ah, 86h
+int 15h
+ret
+gameoverdelay endp
+
 clearscreen proc near
 mov ah,0
 mov al,3
@@ -337,8 +454,8 @@ ret
 clearscreen endp  
 
 hidecursor proc near
-mov dl, 128
-mov dh, 128
+mov dl, 0
+mov dh, 0
 mov bh, 00h
 mov ah, 02h
 int 10h
@@ -357,7 +474,7 @@ push cx
 push dx
 xor ax, ax           
 int 1ah
-mov [seed], dx     
+mov word ptr [seed], dx     
 pop dx
 pop cx
 ret           
@@ -368,7 +485,7 @@ push dx
 mov ax, 25173       
 mul word ptr [seed] 
 add ax, 13849       
-mov [seed], ax      
+mov word ptr [seed], ax      
 pop dx
 ret    
 rand endp
@@ -397,40 +514,84 @@ mov ax,dx
 pop bx
 pop dx
 ret   
-rand2num1to6 endp
+rand2num1to6 endp      
+
+printax proc
+mov cx, 0
+mov bx, 10
+@@loophere:
+mov dx, 0
+div bx                    
+push ax
+add dl, '0'               
+pop ax                    
+push dx                   
+inc cx                    
+cmp ax, 0                 
+jnz @@loophere
+mov ah, 2                  
+@@loophere2:
+pop dx                         
+int 21h                         
+loop @@loophere2
+ret
+printax endp     
+
+changetextcolor proc   
+push ax
+push bx
+push cx
+mov ah, 9
+mov bl, dl
+mov cx, 1 
+int 10h
+pop cx
+pop bx
+pop ax
+ret
+changetextcolor endp
 
 
-true           equ 1
-false          equ 0
-uparrow        equ 4800h
-downarrow      equ 5000h
-leftarrow      equ 4B00h
-rightarrow     equ 4D00h        
-spacebar       equ 3920h
-f4             equ 3E00h
-directionup    equ 0EAh
-directiondown  equ 0EBh
-directionleft  equ 0ECh
-directionright equ 0EDh 
-directionstill equ 0EEh
-firebullet     equ 0EFh
+true             equ 1
+false            equ 0
+uparrow          equ 4800h
+downarrow        equ 5000h
+leftarrow        equ 4B00h
+rightarrow       equ 4D00h        
+spacebar         equ 3920h
+f4               equ 3E00h
+directionup      equ 0EAh
+directiondown    equ 0EBh
+directionleft    equ 0ECh
+directionright   equ 0EDh 
+directionstill   equ 0EEh
+firebullet       equ 0EFh      
+enemystatemoving equ 0DCh
+enemystatebhit   equ 0DDh     
+enemystatenone   equ 0ADh  
+
 
 player:        db 0EAh, 24h
 playerx        db 0ACh
 playery        db 0ACh
 playerhealth   db 100
 playerscore    db 0
-gameover       db 0
+gameover       db false
 input          db 0ACh
 bullet:        db '|', 24h
 isbulletfiring db 0Ach 
 bulletx        db 0ACh
 bullety        db 0ACh     
-enemy:         db "V", 24h
+enemy:         db 'O', 24h
 enemiesx       db 0ACh, 0ACh, 0ACh, 0ACh, 0ACh, 0ACh
-enemiesy       db 0ACh, 0ACh, 0ACh, 0ACh, 0ACh, 0ACh
-emptyspace:    db 20h, 24h 
-seed           dw 13 
+enemiesy       db 0ACh, 0ACh, 0ACh, 0ACh, 0ACh, 0ACh  
+gameovermsg:   db 'GAME OVER', 24h
+scoremsg:      db 'Score: ', 24h
+emptyspace:    db 20h, 24h   
+emptyscore:    db 20h, 20h, 20h, 20h, 20h, 24h
+updatestate    db 0ACh
+seed           dw 0ADh      
+score          dw 0
 
 map: db 0C7h,"                         ",0C7h, 0ah, 0dh
      db 0C7h,"                         ",0C7h, 0ah, 0dh
